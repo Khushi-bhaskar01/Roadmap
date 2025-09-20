@@ -1,10 +1,20 @@
+# CRITICAL: Set Pydantic compatibility BEFORE any other imports
 import os
+os.environ["PYDANTIC_V1"] = "1"
+os.environ["USE_PYDANTIC_V1"] = "true"
+
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-from langchain_google_vertexai import ChatVertexAI
-from langchain_core.prompts import ChatPromptTemplate
+# Import langchain packages with error handling
+try:
+    from langchain_google_vertexai import ChatVertexAI
+    from langchain_core.prompts import ChatPromptTemplate
+except ImportError as e:
+    print(f"Warning: LangChain import failed: {e}")
+    ChatVertexAI = None
+    ChatPromptTemplate = None
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -122,6 +132,9 @@ def goal_generator(skills_data: dict) -> str:
     
     if not skills_data:
         raise Exception("Skills data is empty or invalid")
+    
+    if ChatVertexAI is None:
+        raise Exception("LangChain ChatVertexAI not available")
 
     try:
         # Use environment variable for project ID if available
@@ -162,6 +175,9 @@ def roadmap_generator(skills_data: dict, user_goal: str) -> dict:
     
     if not skills_data or not user_goal:
         raise Exception("Skills data or user goal is empty or invalid")
+    
+    if ChatVertexAI is None or ChatPromptTemplate is None:
+        raise Exception("LangChain components not available")
 
     try:
         # Use environment variable for project ID if available
@@ -362,6 +378,7 @@ async def health_check():
     return {
         "status": "healthy",
         "firebase_initialized": firebase_initialized,
+        "langchain_available": ChatVertexAI is not None,
         "message": "Service is running"
     }
 
