@@ -26,9 +26,9 @@ except Exception as e:
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
-app = FastAPI()
+app = FastAPI(title="Roadmap Generation Service", version="1.0.0")
 
 # Add CORS middleware with flexible origins
 app.add_middleware(
@@ -48,16 +48,6 @@ class ProcessingResponse(BaseModel):
     user_id: str
     generated_goal: Optional[str] = None
     roadmap: Optional[Dict[str, Any]] = None
-    error_details: Optional[str] = None
-
-class AssessmentResponse(BaseModel):
-    success: bool
-    message: str
-    user_id: str
-    assessments_generated: Optional[int] = None
-    assessments_kept: Optional[int] = None
-    assessments_removed: Optional[int] = None
-    total_assessments: Optional[int] = None
     error_details: Optional[str] = None
 
 # Initialize Firebase once when the module loads
@@ -430,370 +420,6 @@ def roadmap_generator(skills_data: dict, user_goal: str) -> dict:
             ]
         }
 
-def assessment_generator(skill: str, category: str) -> dict:
-    """Generates an assessment in JSON format for a given skill + category"""
-    
-    if not skill or not category:
-        raise Exception("Skill and category cannot be empty")
-    
-    if not LANGCHAIN_AVAILABLE:
-        # Return mock assessment
-        return create_mock_assessment(skill, category)
-
-    try:
-        # Use environment variable for project ID if available
-        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT", "pacific-vault-470814-s5")
-        
-        llm = ChatVertexAI(
-            model="gemini-2.0-flash-exp",
-            temperature=0.3,
-            max_output_tokens=2048,
-            project=project_id
-        )
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "You are an assessment generator that creates technical skill assessments. "
-             "Generate exactly 10 multiple-choice questions for the given skill. "
-             "Return a valid JSON object with this exact structure:\n"
-             '{{\n'
-             '  "skill": string,\n'
-             '  "category": string,\n'
-             '  "questions": [\n'
-             '    {{\n'
-             '      "questionId": string (format: "q1", "q2", etc.),\n'
-             '      "questionText": string,\n'
-             '      "options": [string, string, string, string] (exactly 4 options),\n'
-             '      "correctOption": string (must match one of the options exactly)\n'
-             '    }}\n'
-             '  ]\n'
-             '}}\n\n'
-             "Important rules:\n"
-             "- Generate exactly 10 questions\n"
-             "- Each question must have exactly 4 options (A, B, C, D format)\n"
-             "- correctOption must be the full text of the correct answer, not just A/B/C/D\n"
-             "- Questions should test practical knowledge and real-world application\n"
-             "- Make questions progressively challenging (easy to advanced)\n"
-             "- Ensure JSON is valid and properly formatted"),
-            ("user", "Generate a 10-question assessment for skill: {skill}, category: {category}. "
-                     "Focus on practical, industry-relevant questions that test real understanding.")
-        ])
-
-        chain = prompt | llm
-        response = chain.invoke({"skill": skill, "category": category})
-
-        raw_content = response.content.strip()
-        print(f"Raw assessment response for {skill}: {raw_content[:200]}...")
-        
-        # Extract JSON safely
-        json_start = raw_content.find('{')
-        json_end = raw_content.rfind('}')
-        clean_json_str = raw_content[json_start:json_end+1] if json_start != -1 else raw_content
-
-        assessment = json.loads(clean_json_str)
-        
-        # Validate the assessment structure
-        if validate_assessment_structure(assessment, skill, category):
-            return assessment
-        else:
-            print(f"Assessment validation failed for {skill}, using fallback")
-            return create_mock_assessment(skill, category)
-            
-    except json.JSONDecodeError as e:
-        print(f"JSON parsing error for {skill}, using fallback: {e}")
-        return create_mock_assessment(skill, category)
-    except Exception as e:
-        print(f"Failed to generate assessment for {skill}, using fallback: {e}")
-        return create_mock_assessment(skill, category)
-
-def create_mock_assessment(skill: str, category: str) -> dict:
-    """Create a mock assessment when LangChain is unavailable"""
-    return {
-        "skill": skill,
-        "category": category,
-        "questions": [
-            {
-                "questionId": "q1",
-                "questionText": f"What is a fundamental concept in {skill}?",
-                "options": ["Option A", "Option B", "Option C", "Option D"],
-                "correctOption": "Option A"
-            },
-            {
-                "questionId": "q2", 
-                "questionText": f"Which best practice applies to {skill}?",
-                "options": ["Practice 1", "Practice 2", "Practice 3", "Practice 4"],
-                "correctOption": "Practice 1"
-            },
-            {
-                "questionId": "q3",
-                "questionText": f"How do you implement {skill} in real projects?",
-                "options": ["Method 1", "Method 2", "Method 3", "Method 4"],
-                "correctOption": "Method 1"
-            },
-            {
-                "questionId": "q4",
-                "questionText": f"What tool is commonly used with {skill}?",
-                "options": ["Tool A", "Tool B", "Tool C", "Tool D"],
-                "correctOption": "Tool A"
-            },
-            {
-                "questionId": "q5",
-                "questionText": f"Which is an advanced technique in {skill}?",
-                "options": ["Technique 1", "Technique 2", "Technique 3", "Technique 4"],
-                "correctOption": "Technique 1"
-            },
-            {
-                "questionId": "q6",
-                "questionText": f"What is a common mistake when learning {skill}?",
-                "options": ["Mistake A", "Mistake B", "Mistake C", "Mistake D"],
-                "correctOption": "Mistake A"
-            },
-            {
-                "questionId": "q7",
-                "questionText": f"How do you debug issues in {skill}?",
-                "options": ["Debug A", "Debug B", "Debug C", "Debug D"],
-                "correctOption": "Debug A"
-            },
-            {
-                "questionId": "q8",
-                "questionText": f"What framework works well with {skill}?",
-                "options": ["Framework 1", "Framework 2", "Framework 3", "Framework 4"],
-                "correctOption": "Framework 1"
-            },
-            {
-                "questionId": "q9",
-                "questionText": f"Which performance optimization applies to {skill}?",
-                "options": ["Optimization A", "Optimization B", "Optimization C", "Optimization D"],
-                "correctOption": "Optimization A"
-            },
-            {
-                "questionId": "q10",
-                "questionText": f"What is the future trend for {skill}?",
-                "options": ["Trend 1", "Trend 2", "Trend 3", "Trend 4"],
-                "correctOption": "Trend 1"
-            }
-        ]
-    }
-
-def validate_assessment_structure(assessment, expected_skill, expected_category):
-    """Validate that the generated assessment matches the expected structure"""
-    try:
-        # Check basic structure
-        if not isinstance(assessment, dict):
-            return False
-        
-        # Check required fields
-        if "questions" not in assessment:
-            return False
-        
-        questions = assessment["questions"]
-        if not isinstance(questions, list) or len(questions) != 10:
-            return False
-        
-        # Validate each question
-        for question in questions:
-            if not isinstance(question, dict):
-                return False
-            
-            required_fields = ["questionId", "questionText", "options", "correctOption"]
-            for field in required_fields:
-                if field not in question:
-                    return False
-            
-            # Validate options
-            options = question["options"]
-            if not isinstance(options, list) or len(options) != 4:
-                return False
-            
-            # Validate correctOption is one of the options
-            if question["correctOption"] not in options:
-                return False
-        
-        return True
-        
-    except Exception:
-        return False
-
-def get_existing_assessments(user_id: str) -> List[Dict[str, Any]]:
-    """Get existing assessments for a user"""
-    if not db:
-        raise Exception("Firebase not initialized")
-    
-    try:
-        user_ref = db.collection('user').document(user_id)
-        user_doc = user_ref.get()
-        
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            assessments = user_data.get('assessment', [])
-            
-            # Ensure assessments is a list
-            if not isinstance(assessments, list):
-                return []
-            
-            return assessments
-        else:
-            return []
-            
-    except Exception as e:
-        raise Exception(f"Error retrieving existing assessments: {str(e)}")
-
-def create_skill_key(skill: str, category: str) -> str:
-    """Create a unique key for skill + category combination"""
-    return f"{skill.strip().lower()}_{category.strip().lower()}"
-
-def initialize_user_assessment_array(user_id: str):
-    """Initialize the assessment field as an empty array if it doesn't exist"""
-    if not db:
-        raise Exception("Firebase not initialized")
-    
-    try:
-        user_ref = db.collection('user').document(user_id)
-        user_doc = user_ref.get()
-        
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            if 'assessment' not in user_data or not isinstance(user_data.get('assessment'), list):
-                user_ref.update({"assessment": []})
-                print(f"Initialized assessment array for user {user_id}")
-        else:
-            raise Exception(f"User document {user_id} does not exist")
-            
-    except Exception as e:
-        raise Exception(f"Error initializing assessment array: {str(e)}")
-
-def sync_assessments_with_skills(user_id: str) -> Dict[str, Any]:
-    """Sync assessments with current skills"""
-    print(f"\nSyncing assessments for user: {user_id}")
-    
-    # Initialize assessment array
-    initialize_user_assessment_array(user_id)
-    
-    # Get current user skills
-    skills_data = get_user_skills(user_id)
-    primary_skills = skills_data.get('primary', [])
-    secondary_skills = skills_data.get('secondary', [])
-    
-    print(f"Primary skills ({len(primary_skills)}): {primary_skills}")
-    print(f"Secondary skills ({len(secondary_skills)}): {secondary_skills}")
-    
-    # Create set of current skills with their categories
-    current_skill_keys = set()
-    current_skills_map = {}
-    
-    for skill in primary_skills:
-        if skill and skill.strip():  # Skip empty skills
-            key = create_skill_key(skill, "primary")
-            current_skill_keys.add(key)
-            current_skills_map[key] = {"skill": skill.strip(), "category": "primary"}
-    
-    for skill in secondary_skills:
-        if skill and skill.strip():  # Skip empty skills
-            key = create_skill_key(skill, "secondary")
-            current_skill_keys.add(key)
-            current_skills_map[key] = {"skill": skill.strip(), "category": "secondary"}
-    
-    # Get existing assessments
-    existing_assessments = get_existing_assessments(user_id)
-    print(f"Found {len(existing_assessments)} existing assessments")
-    
-    # Create set of existing assessment keys
-    existing_skill_keys = set()
-    assessments_to_keep = []
-    
-    for assessment in existing_assessments:
-        if not isinstance(assessment, dict):
-            continue
-            
-        existing_skill = assessment.get('skill', '').strip()
-        existing_category = assessment.get('category', '').strip()
-        
-        if not existing_skill or not existing_category:
-            continue
-            
-        key = create_skill_key(existing_skill, existing_category)
-        existing_skill_keys.add(key)
-        
-        # Keep assessment if skill still exists
-        if key in current_skill_keys:
-            assessments_to_keep.append(assessment)
-            print(f"Keeping assessment for {existing_skill} ({existing_category})")
-        else:
-            print(f"Removing assessment for {existing_skill} ({existing_category})")
-    
-    # Find skills that need new assessments
-    skills_needing_assessments = current_skill_keys - existing_skill_keys
-    
-    print(f"Assessments to keep: {len(assessments_to_keep)}")
-    print(f"Skills needing new assessments: {len(skills_needing_assessments)}")
-    
-    # Generate assessments for missing skills
-    successful_generations = 0
-    
-    if skills_needing_assessments:
-        print("\nGenerating missing assessments...")
-        
-        for skill_key in skills_needing_assessments:
-            skill_info = current_skills_map[skill_key]
-            skill_name = skill_info["skill"]
-            category = skill_info["category"]
-            
-            print(f"Generating assessment for {skill_name} ({category})")
-            
-            try:
-                assessment = assessment_generator(skill_name, category)
-                
-                # Create new assessment object
-                questions = assessment.get('questions', [])
-                new_assessment_obj = {
-                    "skill": skill_name,
-                    "category": category,
-                    "status": "not_started",
-                    "score": "",
-                    "totalQuestions": len(questions),
-                    "attemptedQuestions": "",
-                    "correctAnswers": "",
-                    "questions": [],
-                    "attemptedAt": "",
-                    "completedAt": ""
-                }
-                
-                # Process questions to match schema
-                for question in questions:
-                    question_obj = {
-                        "questionId": question.get("questionId", ""),
-                        "questionText": question.get("questionText", ""),
-                        "options": question.get("options", []),
-                        "correctOption": question.get("correctOption", ""),
-                        "userAnswer": ""
-                    }
-                    new_assessment_obj["questions"].append(question_obj)
-                
-                assessments_to_keep.append(new_assessment_obj)
-                successful_generations += 1
-                print(f"Successfully generated assessment for {skill_name}")
-                
-            except Exception as e:
-                print(f"Failed to generate assessment for {skill_name}: {str(e)}")
-    
-    # Update the user document with the synchronized assessments
-    if db:
-        try:
-            user_ref = db.collection('user').document(user_id)
-            user_ref.update({"assessment": assessments_to_keep})
-            print(f"Updated user assessments. Total assessments: {len(assessments_to_keep)}")
-        except Exception as e:
-            raise Exception(f"Failed to update assessments in Firestore: {str(e)}")
-    
-    # Return summary statistics
-    assessments_removed = len(existing_assessments) - len(assessments_to_keep) + successful_generations
-    return {
-        "assessments_generated": successful_generations,
-        "assessments_kept": len(assessments_to_keep) - successful_generations,
-        "assessments_removed": max(0, assessments_removed),  # Ensure non-negative
-        "total_assessments": len(assessments_to_keep)
-    }
-
 def update_user_data(user_id: str, goal: str, roadmap_data: dict) -> bool:
     """Updates the user's document in Firestore with the generated goal and roadmap."""
     if not db:
@@ -841,42 +467,10 @@ def update_user_data(user_id: str, goal: str, roadmap_data: dict) -> bool:
     except Exception as e:
         raise Exception(f"Error updating Firestore: {str(e)}")
 
-def process_assessments(user_id: str) -> Dict[str, Any]:
-    """Main function to process assessments for a user"""
-    try:
-        if not db:
-            raise Exception("Firebase not initialized")
-        
-        if not user_id or not user_id.strip():
-            raise Exception("user_id cannot be empty")
-        
-        print(f"Processing assessments for user_id: {user_id}")
-        
-        # Sync assessments with current skills
-        stats = sync_assessments_with_skills(user_id.strip())
-        
-        ai_mode = "LangChain" if LANGCHAIN_AVAILABLE else "Fallback"
-        
-        return {
-            "success": True,
-            "message": f"Assessments synchronized successfully using {ai_mode}",
-            "user_id": user_id,
-            **stats
-        }
-        
-    except Exception as e:
-        print(f"Error processing assessments for user {user_id}: {str(e)}")
-        return {
-            "success": False,
-            "message": "Failed to process assessments",
-            "user_id": user_id,
-            "error_details": str(e)
-        }
-
-def process_user_id(user_id: str) -> Dict[str, Any]:
+def process_user_roadmap(user_id: str) -> Dict[str, Any]:
     """Main processing function that generates goal and roadmap for a user."""
     try:
-        print(f"\nProcessing user_id: {user_id}")
+        print(f"\nProcessing roadmap for user_id: {user_id}")
         
         # Retrieve user skills
         print("Step 1: Retrieving user skills...")
@@ -912,17 +506,17 @@ def process_user_id(user_id: str) -> Dict[str, Any]:
             raise Exception("Failed to update Firestore")
             
     except Exception as e:
-        print(f"Error processing user {user_id}: {str(e)}")
+        print(f"Error processing roadmap for user {user_id}: {str(e)}")
         return {
             "success": False,
-            "message": "Failed to process user",
+            "message": "Failed to process user roadmap",
             "user_id": user_id,
             "error_details": str(e)
         }
 
-@app.post("/process-assessments", response_model=AssessmentResponse)
-async def process_user_assessments(request: UserIdRequest):
-    """Endpoint to sync assessments with user skills"""
+@app.post("/generate-roadmap", response_model=ProcessingResponse)
+async def generate_roadmap(request: UserIdRequest):
+    """Endpoint to generate roadmap and goal for a user"""
     try:
         if not firebase_initialized:
             raise HTTPException(status_code=500, detail="Firebase initialization failed")
@@ -930,36 +524,10 @@ async def process_user_assessments(request: UserIdRequest):
         if not request.user_id or not request.user_id.strip():
             raise HTTPException(status_code=400, detail="user_id cannot be empty")
         
-        print(f"Received request to process assessments for user_id: {request.user_id}")
-        
-        # Process assessments
-        result = process_assessments(request.user_id.strip())
-        
-        if result["success"]:
-            return AssessmentResponse(**result)
-        else:
-            raise HTTPException(status_code=500, detail=result["error_details"])
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Unexpected error in assessments endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
-@app.post("/process-user", response_model=ProcessingResponse)
-async def process_user(request: UserIdRequest):
-    """Endpoint to process a user_id and generate goal/roadmap"""
-    try:
-        if not firebase_initialized:
-            raise HTTPException(status_code=500, detail="Firebase initialization failed")
-        
-        if not request.user_id or not request.user_id.strip():
-            raise HTTPException(status_code=400, detail="user_id cannot be empty")
-        
-        print(f"Received request to process user_id: {request.user_id}")
+        print(f"Received request to generate roadmap for user_id: {request.user_id}")
         
         # Process the user
-        result = process_user_id(request.user_id.strip())
+        result = process_user_roadmap(request.user_id.strip())
         
         if result["success"]:
             return ProcessingResponse(**result)
@@ -969,7 +537,7 @@ async def process_user(request: UserIdRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Unexpected error in endpoint: {str(e)}")
+        print(f"Unexpected error in roadmap endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @app.get("/health")
@@ -977,14 +545,13 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
+        "service": "Roadmap Generation Service",
         "firebase_initialized": firebase_initialized,
         "langchain_available": LANGCHAIN_AVAILABLE,
         "ai_mode": "LangChain" if LANGCHAIN_AVAILABLE else "Fallback",
-        "message": "Service is running",
+        "message": "Roadmap service is running",
         "available_endpoints": [
-            "POST /process-user - Generate goal and roadmap",
-            "POST /process-assessments - Sync assessments with skills",
-            "POST /get-userid - Legacy endpoint",
+            "POST /generate-roadmap - Generate goal and roadmap",
             "GET /health - Health check",
             "GET /debug-firebase - Debug Firebase connection"
         ]
@@ -1000,6 +567,7 @@ async def debug_firebase():
         google_project = os.environ.get('GOOGLE_CLOUD_PROJECT')
         
         debug_info = {
+            "service": "Roadmap Generation Service",
             "firebase_initialized": firebase_initialized,
             "db_object_exists": db is not None,
             "langchain_available": LANGCHAIN_AVAILABLE,
@@ -1054,15 +622,15 @@ async def debug_firebase():
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "FastAPI service is running on Render"}
+    return {"message": "Roadmap Generation Service is running", "service": "roadmap-service"}
 
 # Legacy endpoint for backward compatibility
-@app.post("/get-userid")
-async def get_userid(request: UserIdRequest):
-    """Legacy endpoint - redirects to the new process-user endpoint"""
-    return await process_user(request)
+@app.post("/process-user")
+async def process_user(request: UserIdRequest):
+    """Legacy endpoint - redirects to the new generate-roadmap endpoint"""
+    return await generate_roadmap(request)
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
+    port = int(os.environ.get("PORT", 8001))
     uvicorn.run(app, host="0.0.0.0", port=port)
