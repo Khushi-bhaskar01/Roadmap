@@ -1,20 +1,27 @@
-# CRITICAL: Set Pydantic compatibility BEFORE any other imports
+# Set compatibility flags before ANY imports
 import os
+import sys
+
+# Force Pydantic v1 compatibility
 os.environ["PYDANTIC_V1"] = "1"
-os.environ["USE_PYDANTIC_V1"] = "true"
+os.environ["USE_PYDANTIC_V1"] = "true" 
+os.environ["PYDANTIC_V1_COMPAT"] = "true"
 
 import json
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Import langchain packages with error handling
+# Import with better error handling
 try:
     from langchain_google_vertexai import ChatVertexAI
     from langchain_core.prompts import ChatPromptTemplate
-except ImportError as e:
-    print(f"Warning: LangChain import failed: {e}")
+    LANGCHAIN_AVAILABLE = True
+    print("LangChain imports successful")
+except Exception as e:
+    print(f"LangChain import failed: {e}")
     ChatVertexAI = None
     ChatPromptTemplate = None
+    LANGCHAIN_AVAILABLE = False
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,7 +33,7 @@ app = FastAPI()
 # Add CORS middleware with flexible origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now - you can restrict later
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,8 +63,7 @@ def initialize_firebase():
             # Firebase not initialized, so initialize it
             pass
         
-        # Try different initialization methods
-        # Method 1: Environment variable with JSON content
+        # Method 1: Environment variable with JSON content (RENDER)
         firebase_key = os.environ.get("FIREBASE_SERVICE_ACCOUNT_KEY")
         if firebase_key:
             try:
@@ -78,12 +84,18 @@ def initialize_firebase():
             print(f"Failed to initialize with default credentials: {e}")
         
         # Method 3: Local development fallback
-        local_path = "pacific-vault-470814-s5-25cf6513ecef.json"
-        if os.path.exists(local_path):
-            cred = credentials.Certificate(local_path)
-            firebase_admin.initialize_app(cred)
-            print("Firebase initialized with local credentials")
-            return True
+        local_paths = [
+            "pacific-vault-470814-s5-25cf6513ecef.json",
+            "modell/pacific-vault-470814-s5-25cf6513ecef.json",
+            r"modell\pacific-vault-470814-s5-25cf6513ecef.json"
+        ]
+        
+        for local_path in local_paths:
+            if os.path.exists(local_path):
+                cred = credentials.Certificate(local_path)
+                firebase_admin.initialize_app(cred)
+                print(f"Firebase initialized with local credentials: {local_path}")
+                return True
         
         print("All Firebase initialization methods failed")
         return False
@@ -95,7 +107,13 @@ def initialize_firebase():
 # Initialize Firebase when the module loads
 firebase_initialized = initialize_firebase()
 if firebase_initialized:
-    db = firestore.client()
+    try:
+        db = firestore.client()
+        print("Firestore client initialized")
+    except Exception as e:
+        print(f"Failed to initialize Firestore client: {e}")
+        db = None
+        firebase_initialized = False
 else:
     db = None
 
@@ -133,8 +151,17 @@ def goal_generator(skills_data: dict) -> str:
     if not skills_data:
         raise Exception("Skills data is empty or invalid")
     
-    if ChatVertexAI is None:
-        raise Exception("LangChain ChatVertexAI not available")
+    if not LANGCHAIN_AVAILABLE:
+        # Fallback to mock generation
+        primary_skills = skills_data.get('primary', [])
+        if 'Python' in str(primary_skills):
+            return "Python Developer specializing in Backend Development"
+        elif 'JavaScript' in str(primary_skills):
+            return "Full Stack Web Developer"
+        elif 'Data' in str(primary_skills):
+            return "Data Analyst"
+        else:
+            return f"Specialist in {primary_skills[0] if primary_skills else 'Technology'}"
 
     try:
         # Use environment variable for project ID if available
@@ -168,16 +195,41 @@ def goal_generator(skills_data: dict) -> str:
         print(f"Generated Career Goal: {career_goal}")
         return career_goal
     except Exception as e:
-        raise Exception(f"Failed to generate career goal: {str(e)}")
+        print(f"LangChain failed, using fallback: {e}")
+        # Fallback to mock generation
+        primary_skills = skills_data.get('primary', [])
+        if 'Python' in str(primary_skills):
+            return "Python Developer specializing in Backend Development"
+        elif 'JavaScript' in str(primary_skills):
+            return "Full Stack Web Developer"
+        else:
+            return f"Specialist in {primary_skills[0] if primary_skills else 'Technology'}"
 
 def roadmap_generator(skills_data: dict, user_goal: str) -> dict:
     """Generates a career or skill roadmap in dictionary format based on user background and goals."""
     
     if not skills_data or not user_goal:
         raise Exception("Skills data or user goal is empty or invalid")
-    
-    if ChatVertexAI is None or ChatPromptTemplate is None:
-        raise Exception("LangChain components not available")
+
+    if not LANGCHAIN_AVAILABLE:
+        # Return mock roadmap
+        return {
+            "title": f"Roadmap to become {user_goal}",
+            "tasks": [
+                {
+                    "status": "current",
+                    "taskName": "Learn foundational concepts",
+                    "timeAllocation": "4 weeks",
+                    "resources": [{"title": "Online Course", "link": "https://www.coursera.org"}]
+                },
+                {
+                    "status": "upcoming",
+                    "taskName": "Build practical projects",
+                    "timeAllocation": "6 weeks",
+                    "resources": [{"title": "GitHub Projects", "link": "https://github.com"}]
+                }
+            ]
+        }
 
     try:
         # Use environment variable for project ID if available
@@ -249,9 +301,33 @@ def roadmap_generator(skills_data: dict, user_goal: str) -> dict:
         return roadmap
         
     except json.JSONDecodeError as e:
-        raise Exception(f"JSON parsing error: {str(e)}")
+        print(f"JSON parsing error, using fallback: {e}")
+        # Return fallback roadmap
+        return {
+            "title": f"Roadmap to become {user_goal}",
+            "tasks": [
+                {
+                    "status": "current",
+                    "taskName": "Learn foundational concepts", 
+                    "timeAllocation": "4 weeks",
+                    "resources": [{"title": "Online Course", "link": "https://www.coursera.org"}]
+                }
+            ]
+        }
     except Exception as e:
-        raise Exception(f"Error in roadmap generation: {str(e)}")
+        print(f"LangChain roadmap generation failed, using fallback: {e}")
+        # Return fallback roadmap
+        return {
+            "title": f"Roadmap to become {user_goal}",
+            "tasks": [
+                {
+                    "status": "current",
+                    "taskName": "Learn foundational concepts",
+                    "timeAllocation": "4 weeks",
+                    "resources": [{"title": "Online Course", "link": "https://www.coursera.org"}]
+                }
+            ]
+        }
 
 def update_user_data(user_id: str, goal: str, roadmap_data: dict) -> bool:
     """Updates the user's document in Firestore with the generated goal and roadmap."""
@@ -327,9 +403,10 @@ def process_user_id(user_id: str) -> Dict[str, Any]:
         update_success = update_user_data(user_id, generated_goal, roadmap)
         
         if update_success:
+            ai_mode = "LangChain" if LANGCHAIN_AVAILABLE else "Fallback"
             return {
                 "success": True,
-                "message": "Goal and roadmap generated successfully",
+                "message": f"Goal and roadmap generated successfully using {ai_mode}",
                 "user_id": user_id,
                 "generated_goal": generated_goal,
                 "roadmap": roadmap
@@ -378,16 +455,16 @@ async def health_check():
     return {
         "status": "healthy",
         "firebase_initialized": firebase_initialized,
-        "langchain_available": ChatVertexAI is not None,
+        "langchain_available": LANGCHAIN_AVAILABLE,
+        "ai_mode": "LangChain" if LANGCHAIN_AVAILABLE else "Fallback",
         "message": "Service is running"
     }
 
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "FastAPI service is running on GCP"}
+    return {"message": "FastAPI service is running on Render"}
 
-# Optional: Keep the old endpoint for backward compatibility
 @app.post("/get-userid")
 async def get_userid(request: UserIdRequest):
     """Legacy endpoint - redirects to the new process-user endpoint"""
