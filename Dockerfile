@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --timeout=1000 --retries=3 -r requirements.txt
 COPY . .
 
 # Expose port
-EXPOSE 8000
+EXPOSE 8080
 
 # Run the application
 CMD ["python", "main.py"]
