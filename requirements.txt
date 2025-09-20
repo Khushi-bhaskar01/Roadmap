@@ -1,19 +1,14 @@
-# Core FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-
-# Use Pydantic v1 for compatibility with langchain-google-vertexai
 pydantic==1.10.13
-
-# Langchain packages - let pip resolve compatible versions
 langchain
 langchain-google-vertexai
 langchain-core
-
-# Google Cloud dependencies
 google-cloud-aiplatform
 google-auth
-
-# Common additional dependencies
+firebase-admin
 requests
 python-multipart
+python-dotenv
+httpx
+aiofiles
