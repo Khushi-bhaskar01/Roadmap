@@ -1,19 +1,19 @@
-# Pin compatible versions to avoid conflicts
+# Core FastAPI dependencies
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
-# Pydantic v2 compatibility
-pydantic==2.5.0
+# Use Pydantic v1 for compatibility with langchain-google-vertexai
+pydantic==1.10.13
 
-# Updated langchain packages for better compatibility
-langchain==0.1.0
-langchain-google-vertexai==0.1.0
-langchain-core==0.1.0
+# Langchain packages - let pip resolve compatible versions
+langchain
+langchain-google-vertexai
+langchain-core
 
 # Google Cloud dependencies
-google-cloud-aiplatform==1.38.0
-google-auth==2.24.0
+google-cloud-aiplatform
+google-auth
 
-# Add any other dependencies your app needs
-# requests
-# python-multipart
+# Common additional dependencies
+requests
+python-multipart
