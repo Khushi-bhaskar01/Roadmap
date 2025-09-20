@@ -1,6 +1,19 @@
+# Pin compatible versions to avoid conflicts
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-firebase-admin==6.2.0
-langchain-google-vertexai==1.0.10
+
+# Pydantic v2 compatibility
 pydantic==2.5.0
-python-multipart==0.0.6
+
+# Updated langchain packages for better compatibility
+langchain==0.1.0
+langchain-google-vertexai==0.1.0
+langchain-core==0.1.0
+
+# Google Cloud dependencies
+google-cloud-aiplatform==1.38.0
+google-auth==2.24.0
+
+# Add any other dependencies your app needs
+# requests
+# python-multipart
